@@ -1,12 +1,14 @@
-import { App, DirectiveBinding, reactive, watchEffect } from 'vue'
+import { App, DirectiveBinding, isProxy, reactive, watchEffect } from 'vue'
 import InputNumberInterceptHistory from './history'
 import {
   HistoryState,
+  HTMLInputNumberInterceptElement,
   InputNumberInterceptDirectiveConfig,
-  InputNumberInterceptDirectiveProperty,
   InputNumberInterceptDirectiveValue,
   TxtRange,
 } from './types'
+
+const GLOBAL_PROPTERTY = 'numberInterceptOption'
 
 const descriptor = Reflect.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value') as {
   get(): string
@@ -28,15 +30,21 @@ function setSelectionRange(elem: HTMLInputElement, start: number, end: number) {
   }
 }
 
-function useConfig(binding: DirectiveBinding<InputNumberInterceptDirectiveValue>) {
-  const globalValue =
-    binding.instance?.$.appContext.config.globalProperties[
-      InputNumberInterceptDirectiveProperty.DIRECTIVE_GLOBAL_PROPTERTY
-    ]
+function initConfig(
+  input: HTMLInputNumberInterceptElement,
+  binding: DirectiveBinding<InputNumberInterceptDirectiveValue>
+) {
+  const globalValue = binding.instance?.$.appContext.config.globalProperties[GLOBAL_PROPTERTY]
 
-  const config = reactive({} as InputNumberInterceptDirectiveConfig)
+  const config = reactive(input.numberInterceptConfig ?? ({} as InputNumberInterceptDirectiveConfig))
 
-  watchEffect(() => {
+  const oldConfig = JSON.stringify(config)
+
+  input.numberInterceptConfig = config
+
+  input.numberInterceptHandle?.()
+
+  input.numberInterceptHandle = watchEffect(() => {
     const option = { ...globalValue, ...binding.value }
 
     const mode: InputNumberInterceptDirectiveConfig['mode'] = option.mode === 'integer' ? 'integer' : 'float'
@@ -83,23 +91,31 @@ function useConfig(binding: DirectiveBinding<InputNumberInterceptDirectiveValue>
     config.decimalPoint = mode == 'float' && (isNaN(decimals) || !!decimals)
   })
 
+  if (oldConfig !== JSON.stringify(config)) {
+    input.numberInterceptHistory?.clear()
+  }
+
   return config
 }
 
 function initialize(el: HTMLElement, binding: DirectiveBinding<InputNumberInterceptDirectiveValue>) {
-  const input = (el instanceof HTMLInputElement ? el : el.querySelector('input')) as HTMLInputElement
+  const input = (el instanceof HTMLInputElement ? el : el.querySelector('input')) as HTMLInputNumberInterceptElement
 
-  if (!input || Reflect.get(input, InputNumberInterceptDirectiveProperty.DIRECTIVE_INIT)) return
+  if (!input) return
+
+  const config = initConfig(input, binding)
+
+  // 用户传入的配置对象为非响应式数据时，initConfig 在此之前执行可确保新配置能生效
+  if (input.numberIntercept) return
 
   input.setAttribute('type', 'text')
-  Reflect.set(input, InputNumberInterceptDirectiveProperty.DIRECTIVE_INIT, true)
-
-  const config = useConfig(binding)
+  input.numberIntercept = true
 
   /**
    * 历史记录
    */
   const history = new InputNumberInterceptHistory<HistoryState>()
+  input.numberInterceptHistory = history
 
   // 对初始数据进行缓存
   const range = getSelectionRange(input)
@@ -117,7 +133,6 @@ function initialize(el: HTMLElement, binding: DirectiveBinding<InputNumberInterc
     },
     set(v: string) {
       const current = history.current()
-      console.log({ v, ...current })
       if (current?.text == v) {
         return descriptor.set.call(input, v)
       }
@@ -133,7 +148,6 @@ function initialize(el: HTMLElement, binding: DirectiveBinding<InputNumberInterc
     if (/(^-$|\.$)/.test(value)) return
 
     const event = InputEvent ? new InputEvent('input', { data: value }) : new Event('input')
-    console.log('update event', event)
     input!.dispatchEvent(event)
   }
 
@@ -252,26 +266,30 @@ function initialize(el: HTMLElement, binding: DirectiveBinding<InputNumberInterc
       let [sign, integer, point, decimals] = match.slice(1)
 
       // 去除头部的 '0'
-      if (integer.length) {
-        const int = parseInt(integer)
-        integer = isNaN(int) ? '' : String(int)
+      if (integer.length > 1) {
+        integer = integer.replace(/^0*/, '') || '0'
       }
 
       if (config.integer && integer.length > config.integer) {
         if (forcible || (hasDecimalPoint && start < decimalPointIndex && end > decimalPointIndex)) {
           // loginfo(`最终数值整数部分将超过 ${config.integer} 位数，已舍弃头部数字`)
           integer = integer.slice(-config.integer)
-        } else {
+        } else if (repalceText) {
           // loginfo(`最终数值整数部分将超过 ${config.integer} 位数，输入无效`)
           return
         }
+      }
+
+      if (config.mode === 'integer') {
+        point = ''
+        decimals = ''
       }
 
       if (config.decimals && decimals.length > config.decimals) {
         if (forcible || !hasDecimalPoint || start <= decimalPointIndex) {
           // loginfo(`最终数值小数部分将超过 ${config.decimals} 位数，已舍弃末尾数字`)
           decimals = decimals.slice(0, config.decimals)
-        } else {
+        } else if (repalceText) {
           // loginfo(`最终数值小数部分将超过 ${config.decimals} 位数，输入无效`)
           return
         }
@@ -439,5 +457,5 @@ export function numberInterceptDirective(app: App, option: InputNumberInterceptD
     created: initialize,
     updated: initialize,
   })
-  app.config.globalProperties[InputNumberInterceptDirectiveProperty.DIRECTIVE_GLOBAL_PROPTERTY] = option
+  app.config.globalProperties[GLOBAL_PROPTERTY] = option
 }

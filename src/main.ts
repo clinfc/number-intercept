@@ -25,6 +25,9 @@ createApp(App)
         console.log(e.type, e)
       })
     },
+    updated(...args) {
+      console.log(args)
+    },
   })
   .use(numberInterceptDirective)
   .mount('#app')

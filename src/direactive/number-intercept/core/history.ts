@@ -100,4 +100,13 @@ export default class InputNumberInterceptHistory<T> {
   public clip() {
     return this.data.splice(this.point + 1)
   }
+
+  /**
+   * 清除历史数据
+   */
+  public clear() {
+    this.point = 0
+    this.isRe = false
+    this.data.length = 0
+  }
 }

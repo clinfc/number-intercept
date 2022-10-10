@@ -1,3 +1,6 @@
+import { WatchStopHandle } from 'vue'
+import InputNumberInterceptHistory from './history'
+
 export type TxtRange = {
   start: number
   end: number
@@ -53,13 +56,13 @@ export type InputNumberInterceptDirectiveConfig = Required<InputNumberInterceptD
   decimalPoint: boolean
 }
 
-export const enum InputNumberInterceptDirectiveProperty {
-  /** 已进行过指令初始化。（HTMLInputElement 属性名） */
-  DIRECTIVE_INIT = 'numberIntercept',
-  /** title 信息显示为错误信息时，对默认 title 的缓存。（HTMLInputElement 属性名） */
-  DIRECTIVE_TITLE = 'numberInterceptTitle',
-  /** title 信息显示为错误信息时，对取消提示计时器的缓存。（HTMLInputElement 属性名） */
-  DIRECTIVE_TIMER = 'numberInterceptTimer',
-  /** 全局配置。（app.config.globalProperties 属性名） */
-  DIRECTIVE_GLOBAL_PROPTERTY = 'numberInterceptOption',
+export interface HTMLInputNumberInterceptElement extends HTMLInputElement {
+  /** 已进行过指令初始化 */
+  numberIntercept?: boolean
+  /** 合并后的配置对象 */
+  numberInterceptConfig?: InputNumberInterceptDirectiveConfig
+  /** watchEffect 句柄 */
+  numberInterceptHandle?: WatchStopHandle
+  /** 历史记录 */
+  numberInterceptHistory?: InputNumberInterceptHistory<HistoryState>
 }
